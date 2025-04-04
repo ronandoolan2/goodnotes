@@ -2,7 +2,7 @@ name: Kubernetes CI with Load Testing
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   k8s-load-test:
