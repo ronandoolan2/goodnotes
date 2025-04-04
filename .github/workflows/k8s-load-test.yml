@@ -1,0 +1,52 @@
+name: Kubernetes CI with Load Testing
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  k8s-load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Setup KinD cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          config: .github/kind-config.yaml
+
+      - name: Install k6 for load testing
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run deployment script
+        run: |
+          bash .github/scripts/deploy.sh
+
+      - name: Run load test
+        id: load-test
+        run: |
+          bash .github/scripts/load-test.sh > load-test-results.txt
+          echo "::set-output name=results::$(cat load-test-results.txt)"
+
+      - name: Comment PR with load test results
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('load-test-results.txt', 'utf8');
+            const formattedResults = "## Load Test Results\n\n```\n" + results + "\n```";
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: formattedResults
+            });
