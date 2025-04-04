@@ -38,13 +38,13 @@ jobs:
       - name: Deploy Kubernetes resources
         id: deploy
         run: |
-          bash ./github/scripts/deploy.sh
+          bash ./.github/scripts/deploy.sh
         continue-on-error: false
       
       - name: Verify deployments
         id: verify
         run: |
-          bash ./github/scripts/verify.sh
+          bash ./.github/scripts/verify.sh
         continue-on-error: false
       
       - name: Run load test
