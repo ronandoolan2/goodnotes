@@ -38,20 +38,20 @@ jobs:
       - name: Deploy Kubernetes resources
         id: deploy
         run: |
-          bash ./scripts/deploy.sh
+          bash ./github/scripts/deploy.sh
         continue-on-error: false
       
       - name: Verify deployments
         id: verify
         run: |
-          bash ./scripts/verify.sh
+          bash ./github/scripts/verify.sh
         continue-on-error: false
       
       - name: Run load test
         id: loadtest
         run: |
           echo "Running load tests..."
-          bash ./scripts/load-test.sh | tee load-test-results.txt
+          bash ./.github/scripts/load-test.sh | tee load-test-results.txt
       
       - name: Comment PR with load test results
         if: github.event_name == 'pull_request'
