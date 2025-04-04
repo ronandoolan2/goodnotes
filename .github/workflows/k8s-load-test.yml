@@ -56,30 +56,60 @@ jobs:
         run: |
           echo "Running load tests..."
           bash ./.github/scripts/load-test.sh | tee load-test-results.txt
+
+- name: Comment PR with load test results
+  if: github.event_name == 'pull_request'
+  uses: actions/github-script@v6
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    script: |
+      const fs = require('fs');
       
-      - name: Comment PR with load test results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            const fs = require('fs');
-            try {
-              const results = fs.readFileSync('load-test-results.txt', 'utf8');
-              const formattedResults = `## 🚀 Load Test Results\n\n\`\`\`\n${results}\n\`\`\``;
-              if (fs.existsSync('metrics.txt')) {
-                const metrics = fs.readFileSync('metrics.txt', 'utf8');
-                formattedResults += `\n\n## 📊 Resource Utilization\n\n\`\`\`\n${metrics}\n\`\`\``;
-              }
-              
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: formattedResults
-              });
-              console.log("Successfully posted load test results to PR");
-            } catch (error) {
-              console.error("Error posting results:", error);
-              core.setFailed("Failed to post load test results");
-            }
+      // Retry function with exponential backoff
+      async function retryWithBackoff(fn, maxRetries = 5, initialDelay = 1000) {
+        let retries = 0;
+        while (retries < maxRetries) {
+          try {
+            return await fn();
+          } catch (error) {
+            retries++;
+            if (retries >= maxRetries) throw error;
+            
+            console.log(`Attempt ${retries} failed: ${error.message}`);
+            const delay = initialDelay * Math.pow(2, retries - 1);
+            console.log(`Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+      
+      // Use the retry mechanism
+      try {
+        const results = fs.readFileSync('load-test-results.txt', 'utf8');
+        let comment = `## 🚀 Load Test Results\n\n\`\`\`\n${results}\n\`\`\``;
+        
+        if (fs.existsSync('metrics.txt')) {
+          const metrics = fs.readFileSync('metrics.txt', 'utf8');
+          comment += `\n\n## 📊 Resource Utilization\n\n\`\`\`\n${metrics}\n\`\`\``;
+        }
+        
+        const pull_number = context.payload.pull_request.number;
+        
+        await retryWithBackoff(async () => {
+          console.log(`Posting comment to PR #${pull_number} (attempt)`);
+          return github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pull_number,
+            body: comment
+          });
+        });
+        
+        console.log(`Successfully posted comment to PR #${pull_number}`);
+      } catch (error) {
+        console.error('Error:', error.message);
+        console.error('Status:', error.status);
+        console.error('Response:', error.response?.data);
+        core.setFailed(`Failed to post comment: ${error.message}`);
+      }
+      

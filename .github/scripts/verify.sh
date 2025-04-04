@@ -7,35 +7,58 @@ echo "🔍 Starting verification checks..."
 check_endpoint() {
   local host=$1
   local expected=$2
-  local max_retries=5
+  local max_retries=10  # Increased from 5 to 10
   local retry=0
   local success=false
 
   echo "🔍 Checking endpoint: $host"
   
   while [ $retry -lt $max_retries ] && [ "$success" = false ]; do
-    response=$(curl -s -H "Host: $host" http://localhost)
+    # Add more verbose output for debugging
+    echo "  - Attempt $((retry+1))/$max_retries: curl -s -H \"Host: $host\" http://localhost"
+    
+    # Use timeout to prevent hanging
+    response=$(timeout 5s curl -s -H "Host: $host" http://localhost)
+    if [ $? -ne 0 ]; then
+      echo "  ⚠️ Curl command failed or timed out"
+      retry=$((retry+1))
+      echo "  ⏳ Waiting 10s before retry..."
+      sleep 10  # Increased wait time between retries
+      continue
+    fi
+    
     if echo "$response" | grep -q "$expected"; then
-      echo "✅ Endpoint $host successfully returned '$expected'"
+      echo "  ✅ Endpoint $host successfully returned '$expected'"
       success=true
     else
+      echo "  ⚠️ Response didn't match expected content: \"$response\""
       retry=$((retry+1))
-      echo "⚠️ Attempt $retry: Endpoint $host did not return expected output, retrying in 5s..."
-      sleep 5
+      echo "  ⏳ Waiting 10s before retry..."
+      sleep 10
     fi
   done
   
   if [ "$success" = false ]; then
     echo "❌ Endpoint $host failed validation after $max_retries attempts"
-    echo "Got: $response"
-    echo "Expected to contain: $expected"
     
-    # Diagnostic information
-    echo "📊 Diagnostic information:"
-    kubectl get pods
-    kubectl get services
-    kubectl get ingress
-    kubectl get events --sort-by='.lastTimestamp'
+    # More verbose diagnostics
+    echo "📊 Current network status:"
+    kubectl get nodes -o wide
+    kubectl get pods -A -o wide
+    kubectl get services -o wide
+    kubectl get ingress -o wide
+    
+    # Check ingress controller logs
+    echo "📊 Ingress controller logs:"
+    kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50
+    
+    # Check port forwarding status
+    echo "📊 Port status on localhost:"
+    netstat -tuln | grep 80
+    
+    # Check DNS resolution
+    echo "📊 DNS resolution for localhost:"
+    cat /etc/hosts | grep localhost
     
     exit 1
   fi
