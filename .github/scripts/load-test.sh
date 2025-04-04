@@ -101,7 +101,12 @@ total_requests=$(get_metric "iterations" "count")
 foo_requests=$(get_metric "foo_requests" "count")
 bar_requests=$(get_metric "bar_requests" "count")
 failed_rate=$(get_metric "failed_requests" "rate")
-failed_percent=$(awk "BEGIN { printf \"%.2f\", $failed_rate * 100 }")
+if [ -z "$failed_rate" ] || [ "$failed_rate" = "null" ] || [ "$failed_rate" = "N/A" ]; then
+  failed_percent="0.00"
+else
+  failed_percent=$(awk "BEGIN { printf \"%.2f\", ${failed_rate} * 100 }")
+fi
+
 
 echo "OVERALL STATISTICS"
 echo "-----------------"
