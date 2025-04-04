@@ -67,6 +67,10 @@ jobs:
             try {
               const results = fs.readFileSync('load-test-results.txt', 'utf8');
               const formattedResults = `## 🚀 Load Test Results\n\n\`\`\`\n${results}\n\`\`\``;
+              if (fs.existsSync('metrics.txt')) {
+                const metrics = fs.readFileSync('metrics.txt', 'utf8');
+                formattedResults += `\n\n## 📊 Resource Utilization\n\n\`\`\`\n${metrics}\n\`\`\``;
+              }
               
               github.rest.issues.createComment({
                 issue_number: context.issue.number,

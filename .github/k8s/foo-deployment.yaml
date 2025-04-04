@@ -9,6 +9,9 @@ spec:
   selector:
     matchLabels:
       app: foo
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "5678"
   template:
     metadata:
       labels:

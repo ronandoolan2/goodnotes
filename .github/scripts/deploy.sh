@@ -41,11 +41,9 @@ kubectl apply -f .github/k8s/bar-deployment.yaml
 echo "👉 Deploying ingress rules..."
 kubectl apply -f .github/k8s/ingress.yaml
 
-# Optional: Deploy Prometheus for monitoring
-if [ "${DEPLOY_MONITORING:-false}" == "true" ]; then
-  echo "👉 Deploying Prometheus monitoring stack..."
-  kubectl apply -f .github/k8s/monitoring/prometheus.yaml
-fi
+# Deploy Prometheus for monitoring
+echo "👉 Deploying Prometheus monitoring stack..."
+kubectl apply -f .github/k8s/monitoring/prometheus.yaml
 
 # Wait for deployments to be ready
 echo "👉 Waiting for deployments to be ready..."
