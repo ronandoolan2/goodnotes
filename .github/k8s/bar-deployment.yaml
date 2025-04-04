@@ -13,9 +13,9 @@ spec:
     metadata:
       labels:
         app: bar
-    annotations:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "5678"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5678"
     spec:
       containers:
       - name: http-echo
