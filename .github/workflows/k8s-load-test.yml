@@ -2,51 +2,72 @@ name: Kubernetes CI with Load Testing
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ main, master ]
 
 jobs:
   k8s-load-test:
+    name: K8s Deployment & Load Testing
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+      
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
-
+        with:
+          version: 'latest'
+      
       - name: Setup KinD cluster
         uses: helm/kind-action@v1.8.0
         with:
-          config: .github/kind-config.yaml
-
+          config: .github/k8s/kind-config.yaml
+          wait: 120s
+      
       - name: Install k6 for load testing
         run: |
-          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          curl -s https://github.com/grafana/k6/releases/download/v0.47.0/k6-v0.47.0-linux-amd64.tar.gz | tar xz
+          sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/
           sudo apt-get update
-          sudo apt-get install k6
-
-      - name: Run deployment script
+          sudo apt-get install -y jq
+      
+      - name: Deploy Kubernetes resources
+        id: deploy
         run: |
-          bash .github/scripts/deploy.sh
-
+          bash ./scripts/deploy.sh
+        continue-on-error: false
+      
+      - name: Verify deployments
+        id: verify
+        run: |
+          bash ./scripts/verify.sh
+        continue-on-error: false
+      
       - name: Run load test
-        id: load-test
+        id: loadtest
         run: |
-          bash .github/scripts/load-test.sh > load-test-results.txt
-          echo "::set-output name=results::$(cat load-test-results.txt)"
-
+          echo "Running load tests..."
+          bash ./scripts/load-test.sh | tee load-test-results.txt
+      
       - name: Comment PR with load test results
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const fs = require('fs');
-            const results = fs.readFileSync('load-test-results.txt', 'utf8');
-            const formattedResults = "## Load Test Results\n\n```\n" + results + "\n```";
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: formattedResults
-            });
+            try {
+              const results = fs.readFileSync('load-test-results.txt', 'utf8');
+              const formattedResults = `## 🚀 Load Test Results\n\n\`\`\`\n${results}\n\`\`\``;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: formattedResults
+              });
+              console.log("Successfully posted load test results to PR");
+            } catch (error) {
+              console.error("Error posting results:", error);
+              core.setFailed("Failed to post load test results");
+            }

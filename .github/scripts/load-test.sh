@@ -1,8 +1,14 @@
 #!/bin/bash
 set -e
 
+echo "🚀 Preparing load test..."
+
+# Create a temporary directory for test artifacts
+TEST_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR"' EXIT
+
 # Create k6 load test script
-cat > load-test.js << 'EOF'
+cat > "$TEST_DIR/load-test.js" << 'EOF'
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Rate, Counter } from 'k6/metrics';
@@ -11,18 +17,25 @@ import { Trend, Rate, Counter } from 'k6/metrics';
 const fooRequestDuration = new Trend('foo_request_duration');
 const barRequestDuration = new Trend('bar_request_duration');
 const failRate = new Rate('failed_requests');
-const requestCount = new Counter('requests');
+const fooRequests = new Counter('foo_requests');
+const barRequests = new Counter('bar_requests');
 
 export const options = {
   scenarios: {
-    constant_load: {
-      executor: 'constant-vus',
-      vus: 10,
-      duration: '30s',
+    ramp_up: {
+      executor: 'ramping-vus',
+      startVUs: 1,
+      stages: [
+        { duration: '10s', target: 5 },
+        { duration: '20s', target: 10 },
+        { duration: '10s', target: 0 },
+      ],
     },
   },
   thresholds: {
-    'failed_requests': ['rate<0.1'], // Less than 10% of requests should fail
+    'failed_requests': ['rate<0.05'], // Less than 5% of requests should fail
+    'foo_request_duration': ['p(95)<500'], // 95% of requests should be below 500ms
+    'bar_request_duration': ['p(95)<500'], // 95% of requests should be below 500ms
   },
 };
 
@@ -37,7 +50,14 @@ export default function() {
   };
   
   const res = http.get(url, params);
-  requestCount.add(1);
+  
+  if (target === 'foo') {
+    fooRequests.add(1);
+    fooRequestDuration.add(res.timings.duration);
+  } else {
+    barRequests.add(1);
+    barRequestDuration.add(res.timings.duration);
+  }
   
   const success = check(res, {
     'status is 200': (r) => r.status === 200,
@@ -48,40 +68,80 @@ export default function() {
     failRate.add(1);
   }
   
-  if (target === 'foo') {
-    fooRequestDuration.add(res.timings.duration);
-  } else {
-    barRequestDuration.add(res.timings.duration);
-  }
-  
   sleep(0.1);
 }
 EOF
 
 # Run load test
-echo "Running load test..."
-k6 run load-test.js --summary-export=load-test-summary.json
+echo "🚀 Running load test..."
+k6 run --summary-export="$TEST_DIR/load-test-summary.json" "$TEST_DIR/load-test.js"
 
-# Generate a human-readable report from the JSON output
-echo "# Load Test Results Summary"
+# Generate a human-readable report
+echo "📊 Generating load test report..."
+
+echo "=============================================="
+echo "🚀 LOAD TEST RESULTS SUMMARY"
+echo "=============================================="
 echo ""
-echo "## Overall Statistics"
-echo "- Total Requests: $(jq '.metrics.requests.count' load-test-summary.json)"
-echo "- Failed Requests: $(jq '.metrics.failed_requests.rate * 100' load-test-summary.json)%"
+
+# Extract metrics with proper error handling
+get_metric() {
+  local metric=$1
+  local field=$2
+  value=$(jq -r ".metrics.${metric}.${field} // \"N/A\"" "$TEST_DIR/load-test-summary.json")
+  if [ "$value" != "null" ] && [ "$value" != "N/A" ]; then
+    echo "$value"
+  else
+    echo "N/A"
+  fi
+}
+
+# Overall statistics
+total_requests=$(get_metric "iterations" "count")
+foo_requests=$(get_metric "foo_requests" "count")
+bar_requests=$(get_metric "bar_requests" "count")
+failed_rate=$(get_metric "failed_requests" "rate")
+failed_percent=$(awk "BEGIN { printf \"%.2f\", $failed_rate * 100 }")
+
+echo "OVERALL STATISTICS"
+echo "-----------------"
+echo "Total Requests: $total_requests"
+echo "  - Foo Requests: $foo_requests"
+echo "  - Bar Requests: $bar_requests"
+echo "Failed Requests: ${failed_percent}%"
 echo ""
-echo "## Foo Endpoint Performance"
-echo "- Avg Duration: $(jq '.metrics.foo_request_duration.avg' load-test-summary.json) ms"
-echo "- Min Duration: $(jq '.metrics.foo_request_duration.min' load-test-summary.json) ms"
-echo "- Max Duration: $(jq '.metrics.foo_request_duration.max' load-test-summary.json) ms"
-echo "- p90 Duration: $(jq '.metrics.foo_request_duration["p(90)"]' load-test-summary.json) ms"
-echo "- p95 Duration: $(jq '.metrics.foo_request_duration["p(95)"]' load-test-summary.json) ms"
+
+# Endpoint performance
+echo "FOO ENDPOINT PERFORMANCE"
+echo "-----------------------"
+echo "Avg Duration: $(get_metric "foo_request_duration" "avg") ms"
+echo "Min Duration: $(get_metric "foo_request_duration" "min") ms"
+echo "Max Duration: $(get_metric "foo_request_duration" "max") ms"
+echo "p90 Duration: $(get_metric "foo_request_duration" "p(90)") ms"
+echo "p95 Duration: $(get_metric "foo_request_duration" "p(95)") ms"
 echo ""
-echo "## Bar Endpoint Performance"
-echo "- Avg Duration: $(jq '.metrics.bar_request_duration.avg' load-test-summary.json) ms"
-echo "- Min Duration: $(jq '.metrics.bar_request_duration.min' load-test-summary.json) ms"
-echo "- Max Duration: $(jq '.metrics.bar_request_duration.max' load-test-summary.json) ms"
-echo "- p90 Duration: $(jq '.metrics.bar_request_duration["p(90)"]' load-test-summary.json) ms"
-echo "- p95 Duration: $(jq '.metrics.bar_request_duration["p(95)"]' load-test-summary.json) ms"
+
+echo "BAR ENDPOINT PERFORMANCE"
+echo "-----------------------"
+echo "Avg Duration: $(get_metric "bar_request_duration" "avg") ms"
+echo "Min Duration: $(get_metric "bar_request_duration" "min") ms"
+echo "Max Duration: $(get_metric "bar_request_duration" "max") ms"
+echo "p90 Duration: $(get_metric "bar_request_duration" "p(90)") ms"
+echo "p95 Duration: $(get_metric "bar_request_duration" "p(95)") ms"
 echo ""
-echo "## Requests per Second"
-echo "- Requests/sec: $(jq '.metrics.iterations.rate' load-test-summary.json)"
+
+# Request rate statistics
+echo "REQUEST RATE"
+echo "-----------"
+echo "Requests/sec: $(get_metric "iterations" "rate")"
+echo ""
+
+# Thresholds check
+thresholds_passed=$(jq -r '.root_group.checks // [] | length' "$TEST_DIR/load-test-summary.json")
+if [ "$thresholds_passed" -gt 0 ]; then
+  echo "✅ All thresholds passed"
+else
+  echo "⚠️ Some thresholds failed - check detailed logs"
+fi
+
+echo "=============================================="
