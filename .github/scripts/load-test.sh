@@ -152,9 +152,22 @@ fi
 # Collect resource metrics if Prometheus is enabled
 if kubectl get namespace monitoring &>/dev/null; then
   echo "📊 Collecting resource metrics..."
-  bash -x ls
-  bash ./collect-metrics.sh >> "$TEST_DIR/metrics.txt"
-  cat "$TEST_DIR/metrics.txt"
+  SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+  METRICS_SCRIPT="${SCRIPT_DIR}/../scripts/collect-metrics.sh"
+  
+  # Make sure the script exists and is executable
+  if [ -f "$METRICS_SCRIPT" ]; then
+    # Make it executable if it's not already
+    chmod +x "$METRICS_SCRIPT"
+    
+    # Run the script and redirect output
+    "$METRICS_SCRIPT" >> "$TEST_DIR/metrics.txt"
+    cat "$TEST_DIR/metrics.txt"
+  else
+    echo "❌ Cannot find metrics collection script at: $METRICS_SCRIPT"
+    echo "Current directory: $(pwd)"
+    echo "Available files: $(ls -la $SCRIPT_DIR/../scripts/)"
+  fi
 fi
 
 echo "=============================================="
