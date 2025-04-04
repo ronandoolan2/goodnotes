@@ -152,7 +152,7 @@ fi
 # Collect resource metrics if Prometheus is enabled
 if kubectl get namespace monitoring &>/dev/null; then
   echo "📊 Collecting resource metrics..."
-  bash ./scripts/collect-metrics.sh >> "$TEST_DIR/metrics.txt"
+  bash ./.github/scripts/collect-metrics.sh >> "$TEST_DIR/metrics.txt"
   cat "$TEST_DIR/metrics.txt"
 fi
 
