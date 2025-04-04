@@ -80,3 +80,6 @@ The pipeline runs automatically on pull requests and can be triggered manually f
 - Add security scanning for container images
 - Expand load test scenarios for more complex patterns
 - Implement long-running performance tests
+
+
+PS. This took me about 2 hours
