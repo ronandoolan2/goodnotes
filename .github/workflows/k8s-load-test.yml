@@ -8,6 +8,10 @@ jobs:
   k8s-load-test:
     name: K8s Deployment & Load Testing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     
     steps:
       - name: Checkout code
